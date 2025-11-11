@@ -66,6 +66,14 @@ class File(models.Model):
     cloudinary_url = models.URLField(blank=True, null=True)
     cloudinary_secure_url = models.URLField(blank=True, null=True)
     
+    # PostgreSQL Large Object fields for efficient large file storage
+    postgres_lob_oid = models.BigIntegerField(null=True, blank=True)  # PostgreSQL Large Object OID
+    storage_type = models.CharField(max_length=20, default='cloudinary', choices=[
+        ('cloudinary', 'Cloudinary'),
+        ('postgres_lob', 'PostgreSQL Large Object'),
+        ('local_file', 'Local File System'),
+    ])
+    
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='files')
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, null=True, blank=True, related_name='files')
     size_bytes = models.BigIntegerField()
@@ -94,11 +102,14 @@ class File(models.Model):
     
     @property
     def file_url(self):
-        """Get the file URL - either Cloudinary or local"""
+        """Get the file URL - prioritize Cloudinary, then PostgreSQL LOB, then local"""
         if self.cloudinary_secure_url:
             return self.cloudinary_secure_url
         elif self.cloudinary_url:
             return self.cloudinary_url
+        elif self.postgres_lob_oid:
+            # Return URL for PostgreSQL LOB download endpoint
+            return f'/api/files/{self.id}/download/'
         elif self.file:
             return self.file.url
         return None
@@ -106,6 +117,8 @@ class File(models.Model):
     @property
     def download_url(self):
         """Get the download URL"""
+        if self.postgres_lob_oid:
+            return f'/api/files/{self.id}/download/'
         return self.file_url
     
     @property
@@ -235,6 +248,17 @@ class File(models.Model):
             pass  # Don't fail file save if activity logging fails
     
     def delete(self, *args, **kwargs):
+        # Clean up PostgreSQL LOB before deletion
+        if self.postgres_lob_oid:
+            try:
+                from .lob_utils import lob_manager
+                lob_manager.delete_lob(self.postgres_lob_oid)
+            except Exception as e:
+                # Don't fail deletion if LOB cleanup fails, but log it
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to cleanup PostgreSQL LOB {self.postgres_lob_oid} for file {self.name}: {e}")
+        
         # Log activity before deletion
         try:
             user = getattr(self, '_deleted_by', self.owner)
@@ -426,6 +450,12 @@ class UploadSession(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='initialized')
     uploaded_chunks = models.JSONField(default=list, blank=True)
     file = models.ForeignKey(File, on_delete=models.CASCADE, null=True, blank=True)
+    
+    # PostgreSQL Large Object tracking
+    postgres_lob_oid = models.BigIntegerField(null=True, blank=True)  # Track LOB during upload
+    total_bytes_written = models.BigIntegerField(default=0)  # Track progress
+    use_postgres_lob = models.BooleanField(default=False)  # Flag to use LOB storage
+    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

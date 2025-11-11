@@ -43,11 +43,12 @@ def folders(request):
             folder = serializer.save(owner=request.user)
             
             # Log activity
-            FileActivity.objects.create(
-                file=None,
+            Activity.objects.create(
                 user=request.user,
+                object_type='folder',
+                object_id=folder.id,
                 action='created',
-                details={'folder_name': folder.name, 'folder_id': str(folder.id)},
+                metadata={'folder_name': folder.name, 'folder_id': str(folder.id)},
                 ip_address=request.META.get('REMOTE_ADDR'),
                 user_agent=request.META.get('HTTP_USER_AGENT', '')
             )
@@ -79,11 +80,12 @@ def folder_detail(request, folder_id):
             
             # Log rename activity if name changed
             if 'name' in request.data and old_name != updated_folder.name:
-                FileActivity.objects.create(
-                    file=None,
+                Activity.objects.create(
                     user=request.user,
+                    object_type='folder',
+                    object_id=updated_folder.id,
                     action='renamed',
-                    details={'old_name': old_name, 'new_name': updated_folder.name, 'folder_id': str(updated_folder.id)},
+                    metadata={'old_name': old_name, 'new_name': updated_folder.name, 'folder_id': str(updated_folder.id)},
                     ip_address=request.META.get('REMOTE_ADDR'),
                     user_agent=request.META.get('HTTP_USER_AGENT', '')
                 )
@@ -103,11 +105,12 @@ def folder_detail(request, folder_id):
                 'subfolders_count': subfolders_count
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        FileActivity.objects.create(
-            file=None,
+        Activity.objects.create(
             user=request.user,
+            object_type='folder',
+            object_id=folder.id,
             action='deleted',
-            details={'folder_name': folder.name, 'folder_id': str(folder.id)},
+            metadata={'folder_name': folder.name, 'folder_id': str(folder.id)},
             ip_address=request.META.get('REMOTE_ADDR'),
             user_agent=request.META.get('HTTP_USER_AGENT', '')
         )
@@ -226,11 +229,12 @@ def _delete_folder_recursive(folder, user, meta):
         _delete_folder_recursive(subfolder, user, meta)
     
     # Delete the folder itself
-    FileActivity.objects.create(
-        file=None,
+    Activity.objects.create(
         user=user,
+        object_type='folder',
+        object_id=folder.id,
         action='deleted',
-        details={'folder_name': folder.name, 'folder_id': str(folder.id)},
+        metadata={'folder_name': folder.name, 'folder_id': str(folder.id)},
         ip_address=meta.get('REMOTE_ADDR'),
         user_agent=meta.get('HTTP_USER_AGENT', '')
     )

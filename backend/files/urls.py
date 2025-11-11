@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views, upload_views
+from . import views, upload_views, download_views
 
 urlpatterns = [
     path('folders/', views.folders, name='folders'),
@@ -9,7 +9,8 @@ urlpatterns = [
     path('files/', views.files, name='files'),
     path('files/<uuid:file_id>/', views.file_detail, name='file_detail'),
     path('files/<uuid:file_id>/rename/', views.rename_file, name='rename_file'),
-    path('files/<uuid:file_id>/download/', views.file_download, name='file_download'),
+    path('files/<uuid:file_id>/download/', download_views.download_file, name='file_download'),
+    path('files/<uuid:file_id>/stream/', download_views.stream_file, name='file_stream'),
     path('files/<uuid:file_id>/move/', views.move_file, name='move_file'),
     path('files/<uuid:file_id>/thumbnail/', views.file_thumbnail, name='file_thumbnail'),
     path('files/<uuid:file_id>/preview/', views.file_preview, name='file_preview'),
