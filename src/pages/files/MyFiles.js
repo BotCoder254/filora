@@ -10,6 +10,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
+import DeleteConfirmModal from '../../components/ui/DeleteConfirmModal';
 import FileUpload from '../../components/file-manager/FileUpload';
 import FileMetadataPanel from '../../components/file-manager/FileMetadataPanel';
 import Breadcrumbs from '../../components/file-manager/Breadcrumbs';
@@ -35,6 +36,14 @@ const MyFiles = () => {
   const [dropTarget, setDropTarget] = useState(null);
   const [allFiles, setAllFiles] = useState([]);
   const [cursor, setCursor] = useState(null);
+  
+  // Delete modal state
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    type: null, // 'file' or 'folder'
+    item: null
+  });
+  
   const queryClient = useQueryClient();
   
   // Save view mode preference
@@ -170,16 +179,37 @@ const MyFiles = () => {
     }
   };
   
-  const handleDeleteFile = async (fileId) => {
-    if (window.confirm('Are you sure you want to delete this file?')) {
-      deleteFileMutation.mutate(fileId);
-    }
+  const handleDeleteFile = async (fileId, fileName) => {
+    // Find the file to get its name
+    const file = allFiles.find(f => f.id === fileId);
+    setDeleteModal({
+      isOpen: true,
+      type: 'file',
+      item: file || { id: fileId, name: fileName || 'Unknown file' }
+    });
   };
   
-  const handleDeleteFolder = async (folderId) => {
-    if (window.confirm('Are you sure you want to delete this folder?')) {
-      deleteFolderMutation.mutate(folderId);
+  const handleDeleteFolder = async (folderId, folderName) => {
+    // Find the folder in folders data
+    const folder = foldersData?.results?.find(f => f.id === folderId);
+    setDeleteModal({
+      isOpen: true,
+      type: 'folder',
+      item: folder || { id: folderId, name: folderName || 'Unknown folder' }
+    });
+  };
+
+  const confirmDelete = () => {
+    if (deleteModal.type === 'file') {
+      deleteFileMutation.mutate(deleteModal.item.id);
+    } else if (deleteModal.type === 'folder') {
+      deleteFolderMutation.mutate(deleteModal.item.id);
     }
+    setDeleteModal({ isOpen: false, type: null, item: null });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ isOpen: false, type: null, item: null });
   };
   
   // Drag and drop handlers
@@ -380,6 +410,16 @@ const MyFiles = () => {
           onClose={() => setSelectedFile(null)}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        onConfirm={confirmDelete}
+        itemName={deleteModal.item?.name}
+        itemType={deleteModal.type}
+        isLoading={deleteFileMutation.isPending || deleteFolderMutation.isPending}
+      />
     </div>
   );
 };

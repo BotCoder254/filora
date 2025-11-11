@@ -14,7 +14,10 @@ import {
   Eye
 } from 'lucide-react';
 import { formatFileSize, formatDate } from '../../utils/helpers';
+import { useDownload } from '../../hooks/useDownload';
 import Button from '../ui/Button';
+import DeleteConfirmModal from '../ui/DeleteConfirmModal';
+import DownloadProgress from '../ui/DownloadProgress';
 import FileThumbnail from './FileThumbnail';
 import FilePreviewOverlay from './FilePreviewOverlay';
 import ShareModal from './ShareModal';
@@ -37,6 +40,52 @@ const FileList = ({
 }) => {
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
+  
+  // Delete modal state
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    type: null, // 'file' or 'folder'
+    item: null
+  });
+  
+  const { downloadFile, downloadProgress, downloadStatus } = useDownload();
+
+  const handleDeleteFile = (file) => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'file',
+      item: file
+    });
+  };
+
+  const handleDeleteFolder = (folder) => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'folder',
+      item: folder
+    });
+  };
+
+  const confirmDelete = () => {
+    if (deleteModal.type === 'file') {
+      onDeleteFile(deleteModal.item.id, deleteModal.item.name);
+    } else if (deleteModal.type === 'folder') {
+      onDeleteFolder(deleteModal.item.id, deleteModal.item.name);
+    }
+    setDeleteModal({ isOpen: false, type: null, item: null });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ isOpen: false, type: null, item: null });
+  };
+
+  const handleDownload = async (file) => {
+    try {
+      await downloadFile(file.id, file.name);
+    } catch (error) {
+      console.error('Download failed:', error);
+    }
+  };
   const getFileIcon = (mimeType, size = 'w-5 h-5') => {
     if (mimeType?.startsWith('image/')) return <Image className={`${size} text-accent-secondary`} />;
     if (mimeType?.startsWith('video/')) return <Video className={`${size} text-accent-warning`} />;
@@ -150,7 +199,16 @@ const FileList = ({
           >
             <Info className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="sm" title="Download">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            title="Download"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDownload(file);
+            }}
+            loading={downloadStatus[file.id] === 'downloading'}
+          >
             <Download className="w-4 h-4" />
           </Button>
           <Button 
@@ -169,7 +227,7 @@ const FileList = ({
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              onDeleteFile(file.id);
+              handleDeleteFile(file);
             }}
             title="Delete"
           >
@@ -253,7 +311,7 @@ const FileList = ({
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              onDeleteFolder(folder.id);
+              handleDeleteFolder(folder);
             }}
           >
             <Trash2 className="w-4 h-4 text-accent-error" />
@@ -310,6 +368,28 @@ const FileList = ({
         isOpen={!!shareFile}
         onClose={() => setShareFile(null)}
       />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        onConfirm={confirmDelete}
+        itemName={deleteModal.item?.name}
+        itemType={deleteModal.type}
+      />
+
+      {/* Download Progress */}
+      {Object.keys(downloadProgress).map(fileId => {
+        const file = files.find(f => f.id === fileId);
+        return file && downloadStatus[fileId] ? (
+          <DownloadProgress
+            key={fileId}
+            progress={downloadProgress[fileId] || 0}
+            status={downloadStatus[fileId]}
+            filename={file.name}
+          />
+        ) : null;
+      })}
     </div>
   );
 };

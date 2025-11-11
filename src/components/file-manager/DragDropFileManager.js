@@ -19,9 +19,12 @@ import {
 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatFileSize, formatDate } from '../../utils/helpers';
+import { useDownload } from '../../hooks/useDownload';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Modal from '../ui/Modal';
+import DeleteConfirmModal from '../ui/DeleteConfirmModal';
+import DownloadProgress from '../ui/DownloadProgress';
 import api from '../../services/api';
 
 const DragDropFileManager = ({ 
@@ -41,7 +44,16 @@ const DragDropFileManager = ({
   const [draggedItem, setDraggedItem] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [showMoveModal, setShowMoveModal] = useState(null);
+  
+  // Delete modal state
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    type: null, // 'file' or 'folder'
+    item: null
+  });
+  
   const queryClient = useQueryClient();
+  const { downloadFile, downloadProgress, downloadStatus } = useDownload();
 
   const moveFileMutation = useMutation({
     mutationFn: async ({ fileId, folderId }) => {
@@ -103,15 +115,40 @@ const DragDropFileManager = ({
     setDropTarget(null);
   }, [draggedItem, moveFileMutation]);
 
-  const handleDeleteFile = async (fileId) => {
-    if (window.confirm('Are you sure you want to delete this file?')) {
-      deleteFileMutation.mutate(fileId);
-    }
+  const handleDeleteFile = (file) => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'file',
+      item: file
+    });
   };
 
-  const handleDeleteFolder = async (folderId) => {
-    if (window.confirm('Are you sure you want to delete this folder?')) {
-      deleteFolderMutation.mutate(folderId);
+  const handleDeleteFolder = (folder) => {
+    setDeleteModal({
+      isOpen: true,
+      type: 'folder',
+      item: folder
+    });
+  };
+
+  const confirmDelete = () => {
+    if (deleteModal.type === 'file') {
+      deleteFileMutation.mutate(deleteModal.item.id);
+    } else if (deleteModal.type === 'folder') {
+      deleteFolderMutation.mutate(deleteModal.item.id);
+    }
+    setDeleteModal({ isOpen: false, type: null, item: null });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModal({ isOpen: false, type: null, item: null });
+  };
+
+  const handleDownload = async (file) => {
+    try {
+      await downloadFile(file.id, file.name);
+    } catch (error) {
+      console.error('Download failed:', error);
     }
   };
 
@@ -184,7 +221,15 @@ const DragDropFileManager = ({
             >
               <Move className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDownload(file);
+              }}
+              loading={downloadStatus[file.id] === 'downloading'}
+            >
               <Download className="w-4 h-4" />
             </Button>
             <Button variant="ghost" size="sm">
@@ -195,7 +240,7 @@ const DragDropFileManager = ({
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                handleDeleteFile(file.id);
+                handleDeleteFile(file);
               }}
             >
               <Trash2 className="w-4 h-4 text-accent-error" />
@@ -250,7 +295,7 @@ const DragDropFileManager = ({
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                handleDeleteFolder(folder.id);
+                handleDeleteFolder(folder);
               }}
             >
               <Trash2 className="w-4 h-4 text-accent-error" />
@@ -383,52 +428,61 @@ const DragDropFileManager = ({
 
       {/* Move File Modal */}
       {showMoveModal && (
-        <MoveFileModal
-          fileId={showMoveModal}
-          currentFolderId={currentFolderId}
-          onClose={() => setShowMoveModal(null)}
-          onMove={(fileId, folderId) => {
-            moveFileMutation.mutate({ fileId, folderId });
-            setShowMoveModal(null);
-          }}
-        />
+        <Modal isOpen onClose={() => setShowMoveModal(null)}>
+          <div className="p-6">
+            <h2 className="text-lg font-semibold text-text-primary mb-4">Move File</h2>
+            <p className="text-text-secondary mb-4">Select a destination folder:</p>
+            
+            <div className="max-h-64 overflow-y-auto mb-4">
+              <button
+                onClick={() => {}}
+                className="w-full text-left p-3 rounded-lg hover:bg-dark-hover transition-colors border-dark-border border"
+              >
+                My Files (Root)
+              </button>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <Button variant="secondary" onClick={() => setShowMoveModal(null)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={() => {
+                  moveFileMutation.mutate({ fileId: showMoveModal, folderId: null });
+                  setShowMoveModal(null);
+                }}
+              >
+                Move Here
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
-    </div>
-  );
-};
 
-// Simple Move File Modal for mobile
-const MoveFileModal = ({ fileId, currentFolderId, onClose, onMove }) => {
-  const [selectedFolder, setSelectedFolder] = useState(null);
-  
-  return (
-    <Modal isOpen={true} onClose={onClose} title="Move File">
-      <div className="space-y-4">
-        <p className="text-text-secondary">Select a destination folder:</p>
-        <div className="space-y-2">
-          <button
-            onClick={() => setSelectedFolder(null)}
-            className={`w-full text-left p-3 rounded-lg border transition-colors ${
-              selectedFolder === null ? 'border-accent-primary bg-accent-primary/10' : 'border-dark-border hover:bg-dark-hover'
-            }`}
-          >
-            My Files (Root)
-          </button>
-        </div>
-        <div className="flex justify-end space-x-3">
-          <Button variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button 
-            variant="primary" 
-            onClick={() => onMove(fileId, selectedFolder)}
-          >
-            Move Here
-          </Button>
-        </div>
-      </div>
-    </Modal>
-  );
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        onConfirm={confirmDelete}
+        itemName={deleteModal.item?.name}
+        itemType={deleteModal.type}
+        isLoading={deleteFileMutation.isPending || deleteFolderMutation.isPending}
+      />
+
+    {/* Download Progress */}
+    {Object.keys(downloadProgress).map(fileId => {
+      const file = files.find(f => f.id === fileId);
+      return file && downloadStatus[fileId] ? (
+        <DownloadProgress
+          key={fileId}
+          progress={downloadProgress[fileId] || 0}
+          status={downloadStatus[fileId]}
+          filename={file.name}
+        />
+      ) : null;
+    })}
+  </div>
+);
 };
 
 export default DragDropFileManager;

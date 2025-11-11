@@ -18,6 +18,8 @@ import {
   Activity
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useDownload } from '../../hooks/useDownload';
+import DownloadProgress from '../ui/DownloadProgress';
 import { formatFileSize, formatDate } from '../../utils/helpers';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -35,6 +37,7 @@ const FileMetadataPanel = ({ fileId, onClose }) => {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showActivityLog, setShowActivityLog] = useState(false);
   const queryClient = useQueryClient();
+  const { downloadFile, downloadProgress, downloadStatus } = useDownload();
 
   const { data: file, isLoading, error } = useQuery({
     queryKey: ['file', fileId],
@@ -69,21 +72,15 @@ const FileMetadataPanel = ({ fileId, onClose }) => {
     }
   });
 
-  const downloadMutation = useMutation({
-    mutationFn: async () => {
-      const response = await api.get(`/files/${fileId}/download/`);
-      return response.data;
-    },
-    onSuccess: (data) => {
-      // Create download link
-      const link = document.createElement('a');
-      link.href = data.download_url;
-      link.download = data.filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const handleDownload = async () => {
+    if (file) {
+      try {
+        await downloadFile(fileId, file.name);
+      } catch (error) {
+        console.error('Download failed:', error);
+      }
     }
-  });
+  };
 
   const handleStartEdit = () => {
     setEditName(file.name);
@@ -254,8 +251,8 @@ const FileMetadataPanel = ({ fileId, onClose }) => {
                 <Button 
                   variant="primary" 
                   size="sm" 
-                  onClick={() => downloadMutation.mutate()}
-                  loading={downloadMutation.isPending}
+                  onClick={handleDownload}
+                  loading={downloadStatus[fileId] === 'downloading'}
                 >
                   <Download className="w-4 h-4 mr-1" />
                   Download
@@ -428,6 +425,15 @@ const FileMetadataPanel = ({ fileId, onClose }) => {
         isOpen={showActivityLog}
         onClose={() => setShowActivityLog(false)}
       />
+
+      {/* Download Progress */}
+      {file && (
+        <DownloadProgress
+          progress={downloadProgress[fileId] || 0}
+          status={downloadStatus[fileId]}
+          filename={file.name}
+        />
+      )}
     </motion.div>
   );
 };
